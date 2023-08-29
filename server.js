@@ -1,73 +1,46 @@
 import express from 'express';
-import bodyParser from 'body-parser';
-import { TezosToolkit, MichelsonMap } from '@taquito/taquito';
-import { importKey } from '@taquito/signer';
+import { TezosToolkit } from '@taquito/taquito';
 import { BeaconWallet } from '@taquito/beacon-wallet';
 
-const CONTRACT_ADDRESS = 'KT1FVfi5SFiWay5eqSX7Pr37ztP23oTnRuHi'; // Endereço do contrato
-const NETWORK = 'florencenet'; // Rede de teste Florencenet
-
 const app = express();
-app.use(bodyParser.json());
 
-const tezos = new TezosToolkit('https://florencenet.smartpy.io'); // URL da rede Florencenet
+// Tezos network configuration
+const rpcUrl = 'https://testnet-tezos.giganode.io';
+const contractAddress = 'KT1FVfi5SFiWay5eqSX7Pr37ztP23oTnRuHi';
 
+// Initialize TezosToolkit
+const Tezos = new TezosToolkit(rpcUrl);
+
+// Initialize BeaconWallet
 const wallet = new BeaconWallet({
-  name: 'Your Wallet Name', // Nome da carteira
-  preferredNetwork: NETWORK,
+  name: 'Your Wallet Name',
+  preferredNetwork: 'granadanet', // Ghostnet test network
 });
 
-async function mintNFT(name, description, imageUrl) {
-  try {
-    const activeAccount = await wallet.client.getActiveAccount();
-
-    if (!activeAccount) {
-      throw new Error('No active account found');
-    }
-
-    const tezosWithWallet = new TezosToolkit('https://florencenet.smartpy.io');
-    tezosWithWallet.setWalletProvider(wallet);
-
-    const metadata = {
-      name: name,
-      description: description,
-      image: imageUrl,
-    };
-
-    const metadataMap = MichelsonMap.fromLiteral({
-      '': Buffer.from(JSON.stringify(metadata)).toString('hex'),
-    });
-
-    const contract = await tezosWithWallet.contract.at(CONTRACT_ADDRESS);
-
-    const operation = await contract.methods.mint(metadataMap).send();
-
-    await operation.confirmation();
-
-    console.log('NFT minted successfully');
-  } catch (error) {
-    console.error('Error minting NFT:', error);
-    throw error; // Rethrow the error to be caught by the route handler
-  }
-}
-
+// Endpoint to mint an NFT
 app.post('/mint-nft', async (req, res) => {
   try {
-    const { name, description, imageUrl } = req.body;
+    const { name, description, image } = req.body;
 
-    await wallet.requestPermissions({
-      network: {
-        type: NETWORK,
-        rpcUrl: 'https://florencenet.smartpy.io', // URL da rede Florencenet
-      },
-    });
+    // Load wallet
+    await wallet.requestPermissions({ network: { type: 'testnet' } });
 
-    await mintNFT(name, description, imageUrl);
+    // Load contract
+    const contract = await Tezos.wallet.at(contractAddress);
 
-    res.status(200).json({ message: 'NFT minted successfully' });
+    // Prepare the transaction
+    const operation = await contract.methods
+      .mintNFT(name, description, image)
+      .send();
+
+    // Sign and inject the transaction
+    const [opHash] = await Tezos.wallet
+      .bulkTransfer([{ kind: 'transaction', ...operation }])
+      .send();
+
+    res.json({ status: 'success', operationHash: opHash });
   } catch (error) {
-    console.error('Error in API route:', error);
-    res.status(500).json({ error: 'An error occurred' });
+    res.status(500).json({ status: 'error', message: error.message });
   }
 });
 
