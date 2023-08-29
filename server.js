@@ -1,64 +1,42 @@
-import axios from 'axios';
-import { TezosToolkit } from '@taquito/taquito';
+import express from 'express';
 import { BeaconWallet } from '@taquito/beacon-wallet';
-import { Dapp } from '@temple-wallet/dapp';
+import { TezosToolkit } from '@taquito/taquito';
 
-// Defina as variáveis de ambiente
-const contractAddress = 'KT1FVfi5SFiWay5eqSX7Pr37ztP23oTnRuHi';
-const network = 'granadanet';
+const app = express();
+const port = 3000;
 
-// Função para criar o NFT
-const mintNFT = async (nftData) => {
+app.use(express.json());
+
+const connectedWallets = {}; // Armazene as carteiras conectadas por ID de sessão
+
+app.post('/connect', async (req, res) => {
   try {
-    const Tezos = new TezosToolkit(`https://${network}.smartpy.io`);
+    const { sessionId } = req.body;
 
-    // Configurar Dapp e carteira Beacon
-    const dApp = new Dapp();
-    await dApp.init();
-
-    const walletProvider = new BeaconWallet({ name: 'Your Wallet Name', preferredNetwork: network });
-    dApp.addWallet(walletProvider);
-
-    const permissions = await dApp.requestPermissions();
-
-    if (!permissions) {
-      return { status: 'error', message: 'Failed to connect to wallet' };
+    if (!connectedWallets[sessionId]) {
+      connectedWallets[sessionId] = new BeaconWallet({ name: 'My Tezos Wallet' });
     }
 
-    const wallet = await walletProvider.client.getActiveAccount();
-    await Tezos.setWalletProvider(walletProvider);
+    const wallet = connectedWallets[sessionId];
 
-    // Carregar contrato
-    const contract = await Tezos.contract.at(contractAddress);
+    const permissions = await wallet.requestPermissions({
+      network: {
+        type: 'delphinet', // ou 'mainnet'
+      },
+      scopes: ['email', 'operations'],
+    });
 
-    // Preparar a transação
-    const operation = await contract.methods
-      .mintNFT(nftData['nft-name'], nftData['nft-description'], nftData['nft-image'])
-      .send();
+    const tezos = new TezosToolkit('delphinet'); // ou 'mainnet'
+    tezos.setWalletProvider(wallet);
 
-    // Aguardar a confirmação da transação
-    await operation.confirmation();
+    const publicKeyHash = permissions.address; // Obtenha o publicKeyHash da permissão
 
-    return { status: 'success', message: 'NFT minted successfully' };
+    res.json({ message: 'Connected to Tezos network successfully.', publicKeyHash });
   } catch (error) {
-    return { status: 'error', message: error.message };
+    res.status(500).json({ error: error.message });
   }
-};
+});
 
-export default async function (event) {
-  try {
-    const nftData = event.data;
-
-    const result = await mintNFT(nftData);
-
-    return {
-      status: result.status,
-      message: result.message,
-    };
-  } catch (error) {
-    return {
-      status: 'error',
-      message: error.message,
-    };
-  }
-}
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
