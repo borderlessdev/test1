@@ -1,39 +1,24 @@
 import express from 'express';
-import { BeaconWallet } from '@taquito/beacon-wallet';
 import { TezosToolkit } from '@taquito/taquito';
+import { TempleWallet } from '@temple-wallet/dapp';
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-const connectedWallets = {}; // Armazene as carteiras conectadas por ID de sessão
-
-app.post('/connect', async (req, res) => {
+app.post('/connect-wallet', async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const wallet = new TempleWallet('Your DApp Name');
+    await wallet.connect('carthagenet'); // Connect to a Tezos network
 
-    if (!connectedWallets[sessionId]) {
-      connectedWallets[sessionId] = new BeaconWallet({ name: 'My Tezos Wallet' });
-    }
-
-    const wallet = connectedWallets[sessionId];
-
-    const permissions = await wallet.requestPermissions({
-      network: {
-        type: 'delphinet', // ou 'mainnet'
-      },
-      scopes: ['email', 'operations'],
-    });
-
-    const tezos = new TezosToolkit('delphinet'); // ou 'mainnet'
+    const tezos = new TezosToolkit(`https://${wallet.network}.smartpy.io/`);
     tezos.setWalletProvider(wallet);
 
-    const publicKeyHash = permissions.address; // Obtenha o publicKeyHash da permissão
-
-    res.json({ message: 'Connected to Tezos network successfully.', publicKeyHash });
+    return res.status(200).json({ message: 'Wallet connected successfully.' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(error);
+    return res.status(500).json({ error: 'An error occurred while connecting the wallet.' });
   }
 });
 
