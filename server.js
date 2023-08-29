@@ -1,15 +1,16 @@
 import express from 'express';
+import bodyParser from 'body-parser';
 import { TezosToolkit } from '@taquito/taquito';
 import { BeaconWallet } from '@taquito/beacon-wallet';
 
 const app = express();
+const port = 3000;
 
 // Tezos network configuration
-const rpcUrl = 'https://testnet-tezos.giganode.io';
+const rpcUrl = 'https://granadanet.smartpy.io';
 const contractAddress = 'KT1FVfi5SFiWay5eqSX7Pr37ztP23oTnRuHi';
 
-// Initialize TezosToolkit
-const Tezos = new TezosToolkit(rpcUrl);
+app.use(bodyParser.json());
 
 // Initialize BeaconWallet
 const wallet = new BeaconWallet({
@@ -17,20 +18,23 @@ const wallet = new BeaconWallet({
   preferredNetwork: 'granadanet', // Ghostnet test network
 });
 
-// Endpoint to mint an NFT
+// Mint NFT endpoint
 app.post('/mint-nft', async (req, res) => {
   try {
-    const { name, description, image } = req.body;
+    const { 'nft-name': nftName, 'nft-description': nftDescription, 'nft-image': nftImage } = req.body;
 
-    // Load wallet
-    await wallet.requestPermissions({ network: { type: 'testnet' } });
+    const Tezos = new TezosToolkit(rpcUrl);
+    Tezos.setWalletProvider(wallet);
 
     // Load contract
-    const contract = await Tezos.wallet.at(contractAddress);
+    const contract = await Tezos.contract.at(contractAddress);
+
+    // Request wallet permissions
+    await wallet.requestPermissions({ network: { type: 'testnet' } });
 
     // Prepare the transaction
     const operation = await contract.methods
-      .mintNFT(name, description, image)
+      .mintNFT(nftName, nftDescription, nftImage)
       .send();
 
     // Sign and inject the transaction
@@ -44,7 +48,6 @@ app.post('/mint-nft', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`API server is running on port ${port}`);
 });
